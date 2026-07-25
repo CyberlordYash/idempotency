@@ -106,16 +106,19 @@ func (i *Idempotency) Middleware(next http.Handler) http.Handler {
 			}
 
 			//else wait for running request then retry or return
+			timer := time.NewTimer(i.waitTimeout)
 			select {
 			case <-e.done:
+				timer.Stop()
 				if e.ready {
 					replay(w, e)
 					return
 				}
 				continue
 			case <-r.Context().Done():
+				timer.Stop()
 				return // client hung up; nothing to write
-			case <-time.After(i.waitTimeout):
+			case <-timer.C:
 				http.Error(w, "request with this Idempotency-Key is still processing", http.StatusConflict) // 409
 				return
 			}

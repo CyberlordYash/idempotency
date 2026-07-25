@@ -64,8 +64,16 @@ single global LRU ordering while adding code to defend.
 
 - The fingerprint is over raw body bytes, so two semantically-equal but differently-serialized bodies
   (e.g. reordered JSON keys) count as different. The query string is not part of it.
-- The response body is buffered in memory to enable replay; there is no attempt to replay streaming
-  or chunked responses.
+- Keys are assumed unique within one trust boundary. The fingerprint does not include the caller's
+  identity, so if two different authenticated callers could pick the same key, one could read the
+  other's cached response. Per-caller isolation means folding the principal into the key (e.g. a
+  `caller:key` prefix) before wrapping — left to the host app, since the middleware has no auth
+  context.
+- The response body is buffered in memory to enable replay, and only the *number* of entries is
+  capped (`MaxKeys`), not the size of any one cached body. A handler returning very large responses
+  could use a lot of memory until TTL/eviction. A per-entry byte cap (fall back to a 409 when
+  exceeded) is the obvious next increment. There is also no attempt to replay streaming/chunked
+  responses.
 - A handler that ignores its context and hangs forever holds its key indefinitely. Waiters are
   bounded by `WaitTimeout` (409), but we never forcibly cancel the leader — `net/http` can't do that
   safely.
